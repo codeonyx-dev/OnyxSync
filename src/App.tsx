@@ -10,14 +10,15 @@ import {
   Plus, X, Calendar, Clock, ListTodo, Edit2, FolderPlus,
 } from 'lucide-react';
 import Navbar from './components/layout/Navbar';
-import TabBar from './components/layout/TabBar';
 import ConfirmDialog from './components/shared/ConfirmDialog';
 import UndoToast from './components/shared/UndoToast';
 import MisTareasPanel from './modules/mistareas/MisTareasPanel';
 import CalendarioPanel from './modules/calendario/CalendarioPanel';
 import TaskModals from './modules/mistareas/TaskModals';
 import ActivityModals from './modules/calendario/ActivityModals';
-import { EMPTY_TAREA, MAX_ATTACHMENT_SIZE } from './shared/constants';
+import { EMPTY_TAREA, EMPTY_ACTIVIDAD, MAX_ATTACHMENT_SIZE } from './shared/constants';
+import { getTodayStr } from './shared/dateUtils';
+import { normalizeActivity } from './modules/calendario/activityUtils';
 import { readFileAsDataUrl } from './shared/fileUtils';
 import {
   getTaskEndDate, getTaskEndTime, getTaskDescription, normalizeRecurrence,
@@ -27,35 +28,32 @@ import {
 import {
   getCarpeta, getChildFolders, getDescendantIds, isFolderEmpty,
 } from './modules/mistareas/folderUtils';
+import TaskDetailsSidePanel from './modules/mistareas/TaskDetailsSidePanel';
+import { useGoogleAuth } from './modules/google/GoogleAuthContext';
+import {
+  pushNewTaskToGoogle,
+  pushTaskUpdateToGoogle,
+  pushTaskCompletionToGoogle,
+  pushTaskDeletionToGoogle,
+  applyGooglePushResult,
+  pushNewActivityToGoogle,
+  pushActivityUpdateToGoogle,
+  pushActivityDeletionToGoogle,
+  applyGoogleActivityPushResult,
+} from './modules/google/googlePush';
+import { getStoredToken } from './modules/google/googleOAuth';
+import { useWideLayout } from './shared/useMediaQuery';
+import { loadPersistedState, savePersistedState } from './shared/persistence';
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('tareas');
+export default function App({ userId, onBackToLobby }) {
+  const [activeTab, setActiveTab] = useState(() => loadPersistedState(userId)?.activeTab ?? 'tareas');
 
-  const [carpetas, setCarpetas] = useState([
-    { id: 1, name: 'Trabajo',  colorIdx: 1, collapsed: false, treeCollapsed: false, parentId: null },
-    { id: 2, name: 'Personal', colorIdx: 2, collapsed: false, treeCollapsed: false, parentId: null },
-    { id: 3, name: 'Servidor', colorIdx: 1, collapsed: false, treeCollapsed: false, parentId: 1 },
-  ]);
+  const [carpetas, setCarpetas] = useState(() => loadPersistedState(userId)?.carpetas ?? []);
   const [activeFolderId, setActiveFolderId] = useState(null);
   const [nuevaCarpeta, setNuevaCarpeta] = useState({ name: '', colorIdx: 0, parentId: null });
 
-  const [actividades, setActividades] = useState([
-    { id: 1, title: 'Salir a comer',   start: '2026-06-08T13:00', end: '2026-06-08T14:30', description: 'Almuerzo con el equipo' },
-    { id: 2, title: 'Ir a la iglesia', start: '2026-06-09T09:00', end: '2026-06-09T11:00', description: 'Reunión dominical' }
-  ]);
-
-  const [tareas, setTareas] = useState([
-    { id: 1, folderId: 3, title: 'Hacer el reporte del servidor', endDate: '2026-06-10', endTime: '18:00', description: 'Revisar logs de la semana',
-      isRecurring: false, recurrence: null,
-      subtasks: [{ id: 101, title: 'Descargar logs', completed: false }, { id: 102, title: 'Filtrar errores', completed: false }],
-      attachments: [],
-      inCalendar: false, completed: false, order: 1 },
-    { id: 2, folderId: 2, title: 'Rutina de ejercicio (Pierna)', endDate: '2026-06-08', endTime: '07:00', description: 'Enfocarse en sentadillas',
-      isRecurring: true, recurrence: { type: 'weekly', interval: 1, weekDays: [1, 3, 5], monthDay: 8 },
-      subtasks: [{ id: 103, title: 'Calentamiento', completed: true }, { id: 104, title: 'Sentadillas 4x10', completed: false }],
-      attachments: [],
-      inCalendar: false, completed: false, order: 2 }
-  ]);
+  const [actividades, setActividades] = useState(() => loadPersistedState(userId)?.actividades ?? []);
+  const [tareas, setTareas] = useState(() => loadPersistedState(userId)?.tareas ?? []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
@@ -71,13 +69,26 @@ export default function App() {
   const searchInputRef = useRef(null);
   const undoTimeoutRef = useRef(null);
   const dragOverKeyRef = useRef(null);
+  const skipPersistRef = useRef(true);
+
+  useEffect(() => {
+    if (skipPersistRef.current) {
+      skipPersistRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      savePersistedState({ carpetas, tareas, actividades, activeTab }, userId);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [carpetas, tareas, actividades, activeTab, userId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 10 } }),
   );
 
-  const [nuevaActividad, setNuevaActividad] = useState({ title: '', start: '', end: '', description: '' });
+  const [nuevaActividad, setNuevaActividad] = useState({ ...EMPTY_ACTIVIDAD });
+  const [quickActivityTitle, setQuickActivityTitle] = useState('');
   const [nuevaTarea, setNuevaTarea] = useState({ ...EMPTY_TAREA });
   const [nuevaSubtarea, setNuevaSubtarea] = useState('');
   const [subtareasTemp, setSubtareasTemp] = useState([]);
@@ -88,6 +99,8 @@ export default function App() {
   const [modalConfig, setModalConfig] = useState({ isOpen: false, type: '', data: null });
   const [formDataEdit, setFormDataEdit] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [sidePanelTask, setSidePanelTask] = useState(null);
+  const isWideLayout = useWideLayout();
 
   const openConfirm = ({ title, message, detail = '', confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', variant = 'danger', onConfirm }) => {
     setConfirmDialog({ title, message, detail, confirmLabel, cancelLabel, variant, onConfirm });
@@ -105,6 +118,31 @@ export default function App() {
     if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
     setUndoToast({ message, action: undoAction });
     undoTimeoutRef.current = setTimeout(() => setUndoToast(null), 5000);
+  };
+
+  const notifyGoogleSyncError = (err) => {
+    const msg = err instanceof Error ? err.message : 'No se pudo sincronizar con Google';
+    showUndoToast(msg, () => {});
+  };
+
+  const runGoogleTaskPush = async (taskId, pushFn) => {
+    if (!getStoredToken()) return;
+    try {
+      const result = await pushFn();
+      applyGooglePushResult(taskId, result, setTareas, setActividades);
+    } catch (err) {
+      notifyGoogleSyncError(err);
+    }
+  };
+
+  const runGoogleActivityPush = async (activityId, pushFn) => {
+    if (!getStoredToken()) return;
+    try {
+      const result = await pushFn();
+      applyGoogleActivityPushResult(activityId, result.activityUpdates, setActividades);
+    } catch (err) {
+      notifyGoogleSyncError(err);
+    }
   };
 
   const toggleTaskFilter = (key) => setTaskFilters(f => ({ ...f, [key]: !f[key] }));
@@ -265,7 +303,7 @@ export default function App() {
   const handleAddTarea = (e) => {
     e.preventDefault();
     if (!nuevaTarea.title) return;
-    setTareas([...tareas, {
+    const newTask = {
       ...nuevaTarea,
       folderId: nuevaTarea.folderId ?? (activeFolderId && activeFolderId !== 'sin-carpeta' ? activeFolderId : null),
       recurrence: nuevaTarea.isRecurring ? normalizeRecurrence(nuevaTarea.recurrence, nuevaTarea.endDate) : null,
@@ -275,18 +313,20 @@ export default function App() {
       inCalendar: false,
       completed: false,
       order: Date.now(),
-    }]);
+    };
+    setTareas([...tareas, newTask]);
     setNuevaTarea({ ...EMPTY_TAREA, folderId: null });
     setSubtareasTemp([]);
     setAdjuntosTemp([]);
     closeModal();
+    runGoogleTaskPush(newTask.id, () => pushNewTaskToGoogle(newTask));
   };
 
   const handleQuickAddTask = (e) => {
     e.preventDefault();
     if (!quickTaskTitle.trim()) return;
     const folderId = activeFolderId && activeFolderId !== 'sin-carpeta' ? activeFolderId : null;
-    setTareas([...tareas, {
+    const newTask = {
       id: Date.now(),
       title: quickTaskTitle.trim(),
       folderId,
@@ -295,8 +335,10 @@ export default function App() {
       subtasks: [], attachments: [],
       inCalendar: false, completed: false,
       order: Date.now(),
-    }]);
+    };
+    setTareas([...tareas, newTask]);
     setQuickTaskTitle('');
+    runGoogleTaskPush(newTask.id, () => pushNewTaskToGoogle(newTask));
   };
 
   const completeTask = (id) => {
@@ -307,21 +349,30 @@ export default function App() {
       completed: true,
       subtasks: (task.subtasks || []).map(st => ({ ...st, completed: true })),
     };
+    let nextRecurringTask = null;
     setTareas(prev => {
       let next = prev.map(t => t.id === id ? updated : t);
       if (task.isRecurring) {
-        const nextTask = createNextRecurringTask(task);
-        if (nextTask) next = [...next, nextTask];
+        nextRecurringTask = createNextRecurringTask(task);
+        if (nextRecurringTask) next = [...next, nextRecurringTask];
       }
       return next;
     });
+    pushTaskCompletionToGoogle(updated).catch(notifyGoogleSyncError);
+    if (nextRecurringTask) {
+      runGoogleTaskPush(nextRecurringTask.id, () => pushNewTaskToGoogle(nextRecurringTask));
+    }
   };
 
   const toggleTaskCompletion = (id) => {
     const task = tareas.find(t => t.id === id);
     if (!task) return;
     if (!task.completed) completeTask(id);
-    else setTareas(tareas.map(t => t.id === id ? { ...t, completed: false } : t));
+    else {
+      const reopened = { ...task, completed: false };
+      setTareas(tareas.map(t => t.id === id ? reopened : t));
+      runGoogleTaskPush(id, () => pushTaskUpdateToGoogle(reopened, task));
+    }
   };
 
   const toggleSubtaskCompletion = (taskId, subtaskId, e) => {
@@ -382,6 +433,7 @@ export default function App() {
       const updated = prev.map(t => t.id === taskId ? { ...t, subtasks: t.subtasks.filter(st => st.id !== subtaskId) } : t);
       return [...updated, newTask];
     });
+    runGoogleTaskPush(newTask.id, () => pushNewTaskToGoogle(newTask));
     if (modalConfig.isOpen && modalConfig.data?.id === taskId) {
       setModalConfig({ ...modalConfig, data: { ...modalConfig.data, subtasks: modalConfig.data.subtasks.filter(st => st.id !== subtaskId) } });
     }
@@ -399,7 +451,9 @@ export default function App() {
         const deleted = tareas.find(t => t.id === id);
         const idx = tareas.findIndex(t => t.id === id);
         setTareas(tareas.filter(t => t.id !== id));
+        if (deleted) pushTaskDeletionToGoogle(deleted).catch(notifyGoogleSyncError);
         closeModal();
+        if (sidePanelTask?.id === id) setSidePanelTask(null);
         if (deleted) {
           showUndoToast(`"${deleted.title}" eliminada`, () => {
             setTareas(prev => {
@@ -549,20 +603,48 @@ export default function App() {
 
   const saveTaskEdit = (e) => {
     e.preventDefault();
+    const prev = tareas.find(t => t.id === formDataEdit.id);
     const updated = {
       ...formDataEdit,
       recurrence: formDataEdit.isRecurring ? normalizeRecurrence(formDataEdit.recurrence, formDataEdit.endDate) : null,
     };
     setTareas(tareas.map(t => t.id === updated.id ? updated : t));
+    if (sidePanelTask?.id === updated.id) setSidePanelTask(updated);
     closeModal();
+    runGoogleTaskPush(updated.id, () => pushTaskUpdateToGoogle(updated, prev));
   };
 
   const handleAddActividad = (e) => {
     e.preventDefault();
-    if (!nuevaActividad.title || !nuevaActividad.start) return;
-    setActividades([...actividades, { ...nuevaActividad, id: Date.now() }]);
-    setNuevaActividad({ title: '', start: '', end: '', description: '' });
+    if (!nuevaActividad.title || !nuevaActividad.startDate) return;
+    const activity = normalizeActivity({ ...nuevaActividad, id: Date.now() });
+    setActividades([...actividades, activity]);
+    setNuevaActividad({ ...EMPTY_ACTIVIDAD });
     closeModal();
+    runGoogleActivityPush(activity.id, () => pushNewActivityToGoogle(activity));
+  };
+
+  const handleQuickAddActivity = (e) => {
+    e.preventDefault();
+    if (!quickActivityTitle.trim()) return;
+    const now = new Date();
+    const startDate = getTodayStr();
+    const startHour = now.getHours();
+    const startTime = `${String(startHour).padStart(2, '0')}:00`;
+    const endHour = Math.min(startHour + 1, 23);
+    const endTime = `${String(endHour).padStart(2, '0')}:00`;
+    const activity = normalizeActivity({
+      id: Date.now(),
+      title: quickActivityTitle.trim(),
+      startDate,
+      startTime,
+      endDate: startDate,
+      endTime,
+      description: '',
+    });
+    setActividades([...actividades, activity]);
+    setQuickActivityTitle('');
+    runGoogleActivityPush(activity.id, () => pushNewActivityToGoogle(activity));
   };
 
   const deleteActivity = (id) => {
@@ -574,6 +656,7 @@ export default function App() {
       confirmLabel: 'Eliminar',
       variant: 'danger',
       onConfirm: () => {
+        if (actividad) pushActivityDeletionToGoogle(actividad).catch(notifyGoogleSyncError);
         setActividades(actividades.filter(a => a.id !== id));
         closeModal();
       },
@@ -582,8 +665,10 @@ export default function App() {
 
   const saveActivityEdit = (e) => {
     e.preventDefault();
-    setActividades(actividades.map(a => a.id === formDataEdit.id ? formDataEdit : a));
+    const updated = normalizeActivity(formDataEdit);
+    setActividades(actividades.map(a => a.id === updated.id ? updated : a));
     closeModal();
+    runGoogleActivityPush(updated.id, () => pushActivityUpdateToGoogle(updated));
   };
 
   const openConversionModal = (tarea) => {
@@ -597,20 +682,21 @@ export default function App() {
     e.preventDefault();
     if (!formDataEdit.start || !formDataEdit.end) return;
     const tarea = modalConfig.data;
-    const nuevoEvento = {
+    const nuevoEvento = normalizeActivity({
       id: Date.now(),
       title: `[Tarea] ${tarea.title}`,
       start: formDataEdit.start,
       end: formDataEdit.end,
-      description: `${getTaskDescription(tarea)}${tarea.attachments?.length ? '\n\nAdjuntos: ' + tarea.attachments.map(a => a.name).join(', ') : ''}${tarea.isRecurring ? '\n\nRepetición: ' + getRecurrenceLabel(tarea) : ''}\n${tarea.subtasks?.length ? 'Subtareas:\n' + tarea.subtasks.map(st => `- ${st.completed ? '[x]' : '[ ]'} ${st.title}`).join('\n') : ''}`
-    };
+      description: `${getTaskDescription(tarea)}${tarea.attachments?.length ? '\n\nAdjuntos: ' + tarea.attachments.map(a => a.name).join(', ') : ''}${tarea.isRecurring ? '\n\nRepetición: ' + getRecurrenceLabel(tarea) : ''}\n${tarea.subtasks?.length ? 'Subtareas:\n' + tarea.subtasks.map(st => `- ${st.completed ? '[x]' : '[ ]'} ${st.title}`).join('\n') : ''}`,
+    });
     setActividades([...actividades, nuevoEvento]);
     setTareas(tareas.map(t => t.id === tarea.id ? { ...t, inCalendar: true } : t));
+    runGoogleActivityPush(nuevoEvento.id, () => pushNewActivityToGoogle(nuevoEvento));
     closeModal();
     setActiveTab('actividades');
   };
 
-  const openModal = (type, data) => {
+  const parseTaskData = (data) => {
     const parsed = data ? JSON.parse(JSON.stringify(data)) : null;
     if (parsed) {
       if (!parsed.attachments) parsed.attachments = [];
@@ -626,8 +712,31 @@ export default function App() {
         parsed.recurrence = normalizeRecurrence(parsed.recurrence, parsed.endDate || parsed.dueDate);
       }
     }
+    return parsed;
+  };
+
+  const parseActivityData = (data) => {
+    if (!data) return null;
+    return normalizeActivity(JSON.parse(JSON.stringify(data)));
+  };
+
+  const openModal = (type, data) => {
+    const isActivity = type.includes('actividad');
+    const parsed = isActivity ? parseActivityData(data) : parseTaskData(data);
     setFormDataEdit(parsed);
     setModalConfig({ isOpen: true, type, data: parsed });
+  };
+
+  const closeSidePanel = () => setSidePanelTask(null);
+
+  const openTaskDetails = (tarea) => {
+    const parsed = parseTaskData(tarea);
+    if (isWideLayout) {
+      setSidePanelTask(parsed);
+    } else {
+      setFormDataEdit(parsed);
+      setModalConfig({ isOpen: true, type: 'detalles-tarea', data: parsed });
+    }
   };
 
   const closeModal = () => {
@@ -635,6 +744,16 @@ export default function App() {
     setFormDataEdit(null);
     setEditingCarpeta(null);
   };
+
+  const { lastSync } = useGoogleAuth();
+
+  useEffect(() => {
+    if (!lastSync) return;
+    const data = loadPersistedState(userId);
+    if (!data) return;
+    setTareas(data.tareas ?? []);
+    setActividades(data.actividades ?? []);
+  }, [lastSync, userId]);
 
   const openCreateTask = () => {
     setNuevaTarea({ ...EMPTY_TAREA, folderId: activeFolderId && activeFolderId !== 'sin-carpeta' ? activeFolderId : null });
@@ -645,7 +764,7 @@ export default function App() {
   };
 
   const openCreateActivity = () => {
-    setNuevaActividad({ title: '', start: '', end: '', description: '' });
+    setNuevaActividad({ ...EMPTY_ACTIVIDAD });
     setModalConfig({ isOpen: true, type: 'crear-actividad', data: null });
   };
 
@@ -658,12 +777,28 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!sidePanelTask) return;
+    const updated = tareas.find(t => t.id === sidePanelTask.id);
+    if (!updated) setSidePanelTask(null);
+    else setSidePanelTask(parseTaskData(updated));
+  }, [tareas]);
+
+  useEffect(() => {
+    if (!isWideLayout && sidePanelTask) {
+      setModalConfig({ isOpen: true, type: 'detalles-tarea', data: sidePanelTask });
+      setFormDataEdit(sidePanelTask);
+      setSidePanelTask(null);
+    }
+  }, [isWideLayout]);
+
+  useEffect(() => {
     const onKey = (e) => {
       const tag = e.target?.tagName;
       const isTyping = tag === 'INPUT' || tag === 'TEXTAREA';
       if (e.key === 'Escape') {
         if (confirmDialog) { closeConfirm(); return; }
         if (modalConfig.isOpen) { closeModal(); return; }
+        if (sidePanelTask) { closeSidePanel(); return; }
         if (mobileFolderDrawer) { setMobileFolderDrawer(false); return; }
       }
       if (isTyping) return;
@@ -674,10 +809,11 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeTab, modalConfig.isOpen, confirmDialog, mobileFolderDrawer]);
+  }, [activeTab, modalConfig.isOpen, confirmDialog, mobileFolderDrawer, sidePanelTask]);
 
   const taskModalTypes = ['crear-tarea', 'editar-tarea', 'detalles-tarea', 'crear-carpeta', 'editar-carpeta', 'convertir'];
   const isTaskModal = taskModalTypes.includes(modalConfig.type);
+  const isWideModal = isTaskModal || modalConfig.type?.includes('actividad');
 
   const modalTitle = () => {
     switch (modalConfig.type) {
@@ -695,13 +831,13 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-zinc-800 selection:text-white pb-20">
-      <Navbar />
+    <div className="h-dvh flex flex-col overflow-hidden bg-zinc-950 text-zinc-100 font-sans selection:bg-zinc-800 selection:text-white">
+      <Navbar activeTab={activeTab} onTabChange={setActiveTab} onBackToLobby={onBackToLobby} />
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
-
+      <main className="flex-1 min-h-0 overflow-hidden max-w-7xl mx-auto w-full px-4 py-4 sm:py-5">
         {activeTab === 'tareas' && (
+          <div className="flex gap-6 h-full min-h-0 overflow-hidden">
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           <MisTareasPanel
             carpetas={carpetas}
             tareas={tareas}
@@ -743,15 +879,39 @@ export default function App() {
             deleteTask={deleteTask}
             clearCompletedTasks={clearCompletedTasks}
             openModal={openModal}
+            openTaskDetails={openTaskDetails}
+            selectedTaskId={sidePanelTask?.id ?? null}
             openConversionModal={openConversionModal}
             moveTaskToFolder={moveTaskToFolder}
             toggleSubtaskCompletion={toggleSubtaskCompletion}
             confirmPromoteSubtask={confirmPromoteSubtask}
           />
+          </div>
+          <TaskDetailsSidePanel
+            tarea={sidePanelTask}
+            carpetas={carpetas}
+            onClose={closeSidePanel}
+            onEdit={(t) => openModal('editar-tarea', t)}
+            onConversion={openConversionModal}
+            onToggleComplete={toggleTaskCompletion}
+            onDelete={deleteTask}
+            onToggleSubtask={toggleSubtaskCompletion}
+            onPromoteSubtask={confirmPromoteSubtask}
+          />
+          </div>
         )}
 
         {activeTab === 'actividades' && (
-          <CalendarioPanel actividades={actividades} openModal={openModal} />
+          <div className="h-full min-h-0 overflow-hidden">
+            <CalendarioPanel
+              actividades={actividades}
+              quickActivityTitle={quickActivityTitle}
+              setQuickActivityTitle={setQuickActivityTitle}
+              handleQuickAddActivity={handleQuickAddActivity}
+              openCreateActivity={openCreateActivity}
+              openModal={openModal}
+            />
+          </div>
         )}
       </main>
 
@@ -761,7 +921,7 @@ export default function App() {
 
       {modalConfig.isOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300">
-          <div className={`bg-zinc-900 border border-zinc-800 rounded-t-3xl sm:rounded-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh] pb-4 sm:pb-0 animate-in slide-in-from-bottom-full sm:zoom-in-95 duration-300 ${isTaskModal ? 'max-w-2xl' : 'max-w-md'}`}>
+          <div className={`bg-zinc-900 border border-zinc-800 rounded-t-3xl sm:rounded-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh] pb-4 sm:pb-0 animate-in slide-in-from-bottom-full sm:zoom-in-95 duration-300 ${isWideModal ? 'max-w-2xl' : 'max-w-md'}`}>
             <div className="p-5 border-b border-zinc-800/50 flex justify-between items-center bg-zinc-950/50 sticky top-0 z-10">
               <h3 className="font-semibold text-zinc-100 flex items-center gap-2">
                 {modalTitle()}

@@ -15,7 +15,8 @@ Planificador de tareas y calendario con interfaz oscura. Organiza tareas en carp
 
 ```bash
 # Clonar o descargar el proyecto
-cd onyxSycn
+git clone https://github.com/codeonyx-dev/OnyxSync.git
+cd OnyxSync
 
 # Instalar dependencias
 npm install
@@ -23,6 +24,8 @@ npm install
 # Servidor de desarrollo
 npm run dev
 ```
+
+> **Windows (PowerShell):** si `npm` falla por política de ejecución, usa `npm.cmd run dev`.
 
 Abre la URL que muestra Vite (por defecto `http://localhost:5173`).
 
@@ -45,6 +48,7 @@ Abre la URL que muestra Vite (por defecto `http://localhost:5173`).
 | Tailwind CSS 4    | Estilos                                  |
 | TypeScript        | Tipado (parcial)                         |
 | @dnd-kit          | Arrastrar y soltar tareas                |
+| @react-oauth/google | Inicio de sesión con Google            |
 | lucide-react      | Iconos                                   |
 
 ---
@@ -65,8 +69,8 @@ onyxSycn/
     │
     ├── components/
     │   ├── layout/
-    │   │   ├── Navbar.tsx      # Cabecera con logo OnyxSync
-    │   │   └── TabBar.tsx      # Pestañas Mis Tareas / Calendario
+    │   │   ├── Navbar.tsx      # Logo, pestañas Mis Tareas/Calendario y Google
+    │   │   └── GoogleSyncButton.tsx
     │   └── shared/
     │       ├── ConfirmDialog.tsx
     │       └── UndoToast.tsx
@@ -86,6 +90,10 @@ onyxSycn/
     │   └── calendario/         # Módulo Calendario
     │       ├── CalendarioPanel.tsx  # Línea de tiempo de eventos
     │       └── ActivityModals.tsx   # Modales de eventos
+    │
+    │   └── google/             # Sincronización Google
+    │       ├── GoogleAuthContext.tsx
+    │       └── googleApi.ts
     │
     └── shared/                 # Código compartido entre módulos
         ├── constants.ts        # Colores carpetas, constantes de tareas
@@ -132,15 +140,42 @@ onyxSycn/
 ### Mis Tareas
 - Carpetas y subcarpetas con colores
 - Contador de tareas que incluye subcarpetas
+- **Panel lateral de detalles** en pantallas anchas (≥1280px); en móvil sigue el modal
 - Arrastrar desde el grip (⋮⋮) para reordenar o mover a carpeta
 - Búsqueda, filtros por plazo y propiedades (incl. carpetas vacías)
 - Subtareas, adjuntos, recurrencia, fechas de vencimiento
 - Atajos: `N` nueva tarea, `/` buscar, `Esc` cerrar
 
+### Google (Tasks + Calendar)
+- Botón **Conectar Google** en la barra superior
+- Importa tareas de Google Tasks y eventos del calendario principal
+- Requiere configurar OAuth (ver abajo)
+
 ### Calendario
 - Línea de tiempo de eventos
 - Crear, editar y ver detalles
 - Convertir tarea en evento desde Mis Tareas
+
+---
+
+## Configurar Google OAuth
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → nuevo proyecto
+2. Activar **Google Tasks API** y **Google Calendar API**
+3. Credenciales → **ID de cliente OAuth 2.0** → Aplicación web
+4. Orígenes autorizados: `http://localhost:5173` (y tu dominio en producción)
+5. **URIs de redirección autorizados:** `http://localhost:5173/` (la misma URL de la app)
+6. Copiar `.env.example` a `.env` y pegar el Client ID:
+
+```env
+VITE_GOOGLE_CLIENT_ID=tu-id.apps.googleusercontent.com
+```
+
+7. Reiniciar `npm run dev`
+
+> Al pulsar **Iniciar sesión con Google**, la app te redirige a la página oficial de Google para elegir cuenta y dar permisos. Después vuelves a OnyxSync automáticamente.
+
+> La sincronización actual **importa** datos de Google al abrir sesión. La escritura bidireccional (crear/editar en Google desde Onyx) está pendiente.
 
 ---
 
@@ -184,6 +219,7 @@ gh gist create OnyxSync.md --public --desc "OnyxSync — documentación del proy
 ## Próximos pasos sugeridos
 
 - [ ] Persistencia en `localStorage`
+- [ ] Sync bidireccional con Google (crear/editar/completar)
 - [ ] Vista calendario mensual / Sectograph
 - [ ] Build TypeScript sin errores (`npm run build`)
 - [ ] Empaquetado móvil (Capacitor / PWA)

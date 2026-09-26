@@ -28,6 +28,7 @@ export default function TareaCard({
   onToggleSubtask,
   onPromoteSubtask,
   folderPicker,
+  isSelected = false,
 }) {
   const color = carpeta ? FOLDER_COLORS[carpeta.colorIdx] : null;
   const dueStatus = getTaskDueStatus(tarea);
@@ -57,9 +58,9 @@ export default function TareaCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group bg-zinc-900/30 border border-zinc-800 hover:border-zinc-700 transition-colors rounded-lg px-2.5 py-2 relative ${
-        isDragging ? 'opacity-40 border-zinc-600' : ''
-      } ${dueStatus === 'overdue' ? 'border-red-900/40 hover:border-red-800/60' : ''}`}
+      className={`group bg-zinc-900/30 border hover:border-zinc-700 transition-colors rounded-lg px-2.5 py-2 relative ${
+        isSelected ? 'border-blue-500/60 bg-blue-950/20 ring-1 ring-blue-500/30' : 'border-zinc-800'
+      } ${isDragging ? 'opacity-40 border-zinc-600' : ''} ${dueStatus === 'overdue' && !isSelected ? 'border-red-900/40 hover:border-red-800/60' : ''}`}
     >
       {color && (
         <div className={`absolute left-0 top-0 bottom-0 w-0.5 rounded-l-xl ${color.dot}`} style={{ opacity: 0.8 }} />

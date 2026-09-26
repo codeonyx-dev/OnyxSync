@@ -61,6 +61,8 @@ export default function MisTareasPanel({
   deleteTask,
   clearCompletedTasks,
   openModal,
+  openTaskDetails,
+  selectedTaskId,
   openConversionModal,
   moveTaskToFolder,
   toggleSubtaskCompletion,
@@ -157,7 +159,8 @@ export default function MisTareasPanel({
         carpeta={carpeta}
         folderPathLabel={carpeta ? getFolderPath(carpetas, carpeta.id).map(c => c.name).join('/') : ''}
         onToggleComplete={toggleTaskCompletion}
-        onOpenDetails={(t) => openModal('detalles-tarea', t)}
+        isSelected={selectedTaskId === tarea.id}
+        onOpenDetails={openTaskDetails}
         onOpenEdit={(t) => openModal('editar-tarea', t)}
         onToggleMovePicker={(id) => setMovePickerTaskId(movePickerTaskId === id ? null : id)}
         onConversion={openConversionModal}
@@ -269,6 +272,7 @@ export default function MisTareasPanel({
   };
 
   return (
+    <div className="h-full min-h-0 overflow-hidden">
     <DndContext
       sensors={sensors}
       collisionDetection={taskFolderCollisionDetection}
@@ -278,9 +282,9 @@ export default function MisTareasPanel({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="flex gap-6 animate-in fade-in duration-500">
-        <aside className="w-48 shrink-0 hidden sm:block">
-          <div className="sticky top-24 space-y-1">
+      <div className="flex gap-6 h-full min-h-0 overflow-hidden animate-in fade-in duration-500">
+        <aside className="w-48 min-w-[12rem] shrink-0 hidden sm:block h-full overflow-hidden">
+          <div className="h-full overflow-y-auto overflow-x-hidden onyx-scroll pr-1 space-y-1">
             <div className="flex items-center justify-between mb-3 px-1">
               <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Carpetas</span>
               <button onClick={() => openCreateFolder(null)} className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded-md transition-colors" title="Nueva carpeta">
@@ -311,8 +315,8 @@ export default function MisTareasPanel({
           </div>
         </aside>
 
-        <div className="flex-1 space-y-4 min-w-0">
-          <div className="space-y-3">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+          <div className="shrink-0 flex-none space-y-3 pb-3 border-b border-zinc-900 bg-zinc-950 z-10">
             <div className="flex gap-2">
               <button
                 type="button"
@@ -358,16 +362,15 @@ export default function MisTareasPanel({
               tareasCompletadas={tareasCompletadas}
               clearCompletedTasks={clearCompletedTasks}
             />
-          </div>
 
-          {activeDragTask && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-950/30 border border-blue-900/40 text-xs text-blue-300">
-              <GripVertical size={14} />
-              Arrastra a una carpeta del panel izquierdo o usa el botón de carpeta en la tarea
-            </div>
-          )}
+            {activeDragTask && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-950/30 border border-blue-900/40 text-xs text-blue-300">
+                <GripVertical size={14} />
+                Arrastra a una carpeta del panel izquierdo o usa el botón de carpeta en la tarea
+              </div>
+            )}
 
-          <div className="sm:hidden flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+            <div className="sm:hidden flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
             <button onClick={() => setActiveFolderId(null)} className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeFolderId === null ? 'bg-zinc-800 text-white' : 'bg-zinc-900 text-zinc-400 border border-zinc-800'}`}>
               Todas
             </button>
@@ -402,8 +405,10 @@ export default function MisTareasPanel({
             <button onClick={() => openCreateFolder(null)} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 text-zinc-500 border border-zinc-800 border-dashed">
               <Plus size={12} /> Carpeta
             </button>
+            </div>
           </div>
 
+          <div className="flex-1 overflow-y-auto onyx-scroll min-h-0 pt-4">
           {activeFolderId === null && grupos && (
             <div className="space-y-6">
               {!hasVisibleTasks && (
@@ -559,6 +564,7 @@ export default function MisTareasPanel({
               )}
             </div>
           )}
+          </div>
         </div>
       </div>
 
@@ -607,5 +613,6 @@ export default function MisTareasPanel({
         ) : null}
       </DragOverlay>
     </DndContext>
+    </div>
   );
 }

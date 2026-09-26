@@ -48,6 +48,17 @@ export const EMPTY_TAREA = {
   recurrence: null,
 };
 
+export const EMPTY_ACTIVIDAD = {
+  title: '',
+  startDate: '',
+  startTime: '',
+  endDate: '',
+  endTime: '',
+  description: '',
+  isRecurring: false,
+  recurrence: null,
+};
+
 export const FOLDER_COLORS = [
   { name: 'Zinc',    bg: 'bg-zinc-700',    text: 'text-zinc-300',    border: 'border-zinc-600',    dot: 'bg-zinc-400'    },
   { name: 'Azul',    bg: 'bg-blue-900/60', text: 'text-blue-300',    border: 'border-blue-800/60', dot: 'bg-blue-400'    },

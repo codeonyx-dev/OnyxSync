@@ -4,14 +4,21 @@ import { formatDisplayDate, formatDisplayTime } from '../dateUtils';
 import CalendarPicker from './CalendarPicker';
 import TimePicker from './TimePicker';
 
-export default function DateTimeFields({ endDate, endTime, onDateChange, onTimeChange }) {
+export default function DateTimeFields({
+  endDate,
+  endTime,
+  onDateChange,
+  onTimeChange,
+  dateLabel = 'Fecha de finalización',
+  timeLabel = 'Hora',
+}) {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showTime, setShowTime] = useState(false);
 
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-xs text-zinc-500 mb-1.5 ml-1">Fecha de finalización</label>
+        <label className="block text-xs text-zinc-500 mb-1.5 ml-1">{dateLabel}</label>
         <button
           type="button"
           onClick={() => setShowCalendar(v => !v)}
@@ -30,7 +37,7 @@ export default function DateTimeFields({ endDate, endTime, onDateChange, onTimeC
         )}
       </div>
       <div>
-        <label className="block text-xs text-zinc-500 mb-1.5 ml-1">Hora</label>
+        <label className="block text-xs text-zinc-500 mb-1.5 ml-1">{timeLabel}</label>
         <button
           type="button"
           onClick={() => setShowTime(v => !v)}

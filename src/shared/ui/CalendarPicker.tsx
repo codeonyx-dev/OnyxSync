@@ -3,19 +3,23 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MONTH_NAMES, CAL_HEADERS } from '../constants';
 import { toDateStr, getCalendarDays } from '../dateUtils';
 
-export default function CalendarPicker({ value, onChange, onPick }) {
+export default function CalendarPicker({
+  value,
+  onChange,
+  onPick,
+  allowPast = false,
+  markedDates = [],
+}) {
   const initial = value ? new Date(`${value}T12:00`) : new Date();
-  const [viewYear, setViewYear] = useState(Math.max(initial.getFullYear(), new Date().getFullYear()));
-  const [viewMonth, setViewMonth] = useState(() => {
-    const now = new Date();
-    if (initial < now && !value) return now.getMonth();
-    return initial.getMonth();
-  });
+  const now = new Date();
+  const [viewYear, setViewYear] = useState(initial.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initial.getMonth());
 
   const today = new Date();
   const todayStr = toDateStr(today.getFullYear(), today.getMonth(), today.getDate());
   const days = getCalendarDays(viewYear, viewMonth);
-  const canGoPrev = viewYear > today.getFullYear() || (viewYear === today.getFullYear() && viewMonth > today.getMonth());
+  const markedSet = new Set(markedDates);
+  const canGoPrev = allowPast || viewYear > now.getFullYear() || (viewYear === now.getFullYear() && viewMonth > now.getMonth());
 
   const prevMonth = () => {
     if (!canGoPrev) return;
@@ -60,14 +64,15 @@ export default function CalendarPicker({ value, onChange, onPick }) {
           const dateStr = toDateStr(viewYear, viewMonth, day);
           const isSelected = value === dateStr;
           const isToday = todayStr === dateStr;
-          const isPast = dateStr < todayStr;
+          const isPast = !allowPast && dateStr < todayStr;
+          const hasEvents = markedSet.has(dateStr);
           return (
             <button
               key={dateStr}
               type="button"
               disabled={isPast}
               onClick={() => !isPast && pickDate(dateStr)}
-              className={`aspect-square flex items-center justify-center text-xs rounded-lg transition-all ${
+              className={`relative aspect-square flex items-center justify-center text-xs rounded-lg transition-all ${
                 isPast && !isSelected
                   ? 'text-zinc-800 cursor-not-allowed'
                   : isSelected
@@ -78,6 +83,11 @@ export default function CalendarPicker({ value, onChange, onPick }) {
               }`}
             >
               {day}
+              {hasEvents && (
+                <span className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${
+                  isSelected ? 'bg-zinc-700' : 'bg-sky-400'
+                }`} />
+              )}
             </button>
           );
         })}
