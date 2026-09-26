@@ -1,0 +1,23 @@
+{
+  "maxTitleLength": 50,
+  "types": [
+    { "id": "1", "prefix": "Mejora /", "label": "Nueva funcionalidad o mejora significativa", "style": "slash" },
+    { "id": "2", "prefix": "Arreglo /", "label": "Corrección de bug", "style": "slash" },
+    { "id": "3", "prefix": "Docs /", "label": "Cambios en documentación", "style": "slash" },
+    { "id": "4", "prefix": "Estilo /", "label": "Cambios de estilo (espacios, formato, etc.)", "style": "slash" },
+    { "id": "5", "prefix": "Refactor /", "label": "Refactorización sin cambiar funcionalidad", "style": "slash" },
+    { "id": "6", "prefix": "Test /", "label": "Agregar o corregir tests", "style": "slash" },
+    { "id": "7", "prefix": "Actualización /", "label": "Herramientas, configuración, dependencias", "style": "slash" },
+    { "id": "8", "prefix": "Rendimiento /", "label": "Mejoras de rendimiento", "style": "slash" },
+    { "id": "9", "prefix": "Build /", "label": "Sistema de build", "style": "slash" },
+    { "id": "10", "prefix": "Seguridad", "label": "Actualizaciones de seguridad", "style": "colon" },
+    { "id": "11", "prefix": "Temp /", "label": "Subida temporal para guardar avances", "style": "slash" }
+  ],
+  "examples": [
+    "Mejora / agregar validación de email en registro de usuarios",
+    "Arreglo / corregir error en cálculo de estadísticas por parroquia",
+    "Docs / actualizar guía de instalación y configuración",
+    "Mejora(auth): implementar login con Google OAuth",
+    "Arreglo(ui): corregir alineación de botones en formulario móvil"
+  ]
+}

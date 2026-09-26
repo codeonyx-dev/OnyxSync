@@ -109,6 +109,14 @@ Sin Client ID la app funciona igual en local; solo se desactiva la sincronizaci�
 
 Detalle de arquitectura, módulos y estructura del código: **[OnyxSync.md](./OnyxSync.md)**
 
+## Convenciones de Git
+
+Tipos de commit, Git Flow y script de formulario: **[docs/CONVENCIONES.md](./docs/CONVENCIONES.md)**
+
+```powershell
+.\scripts\commit.ps1
+```
+
 ---
 
 *OnyxSync v1.0.0*
